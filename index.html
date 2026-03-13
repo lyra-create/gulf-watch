@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gulf Watch — UAE Situational Awareness</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
+<script src="https://unpkg.com/@turf/turf@7.0.0/turf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0c0f;--surface:#12151a;--surface-2:#1a1f28;
+  --border:rgba(255,255,255,0.08);--text:#e8eaf0;--text-muted:#8892a4;
+  --accent-red:#ff3b3b;--accent-orange:#ff8c00;--accent-yellow:#ffd700;
+  --accent-green:#22c55e;--accent-blue:#3b82f6;--accent-cyan:#06b6d4;
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margin:0;overflow:hidden}
+#map{width:100%;height:100vh}
+
+.header-bar{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  background:rgba(10,12,15,0.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  padding:12px 24px;display:flex;align-items:center;gap:16px;
+}
+.logo-text{font-size:20px;font-weight:700;color:#fff;letter-spacing:-0.02em}
+.logo-tag{color:var(--accent-red)}
+.subtitle-text{font-size:12px;color:var(--text-muted);margin-left:4px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+.live-indicator{display:flex;align-items:center;gap:6px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-red);animation:pulse-dot 1.5s infinite}
+.live-text{font-size:12px;color:var(--accent-red);font-weight:600;letter-spacing:0.05em}
+.updated-text{font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+@keyframes pulse-dot{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:0.4;transform:scale(0.8)}
+}
+
+.layer-controls{
+  position:fixed;top:72px;left:16px;z-index:150;
+  display:flex;flex-direction:column;gap:6px;
+}
+.layer-btn{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(18,21,26,0.92);border:1px solid rgba(255,255,255,0.12);
+  color:#c8cad4;padding:7px 12px;border-radius:7px;cursor:pointer;
+  font-family:'Inter',sans-serif;font-size:12px;font-weight:500;
+  transition:all 0.2s;backdrop-filter:blur(8px);white-space:nowrap;
+}
+.layer-btn.active{color:#fff;border-color:rgba(255,255,255,0.25);background:rgba(26,31,40,0.95)}
+.layer-btn:hover{border-color:rgba(255,255,255,0.2)}
+.layer-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+.legend{
+  position:fixed;bottom:32px;left:16px;z-index:150;
+  background:rgba(18,21,26,0.92);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;backdrop-filter:blur(8px);max-width:220px;
+}
+.legend-title{font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px}
+.legend-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;color:#c8cad4}
+.legend-item:last-child{margin-bottom:0}
+.legend-line{width:20px;height:3px;border-radius:2px;flex-shrink:0}
+.legend-circle{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.legend-area{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+
+.panel-toggle{
+  position:fixed;right:16px;top:60px;z-index:300;
+  background:rgba(18,21,26,0.95);border:1px solid rgba(255,255,255,0.15);
+  color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;
+  font-family:'Inter',sans-serif;font-size:13px;font-weight:500;
+  transition:all 0.2s;backdrop-filter:blur(8px);
+}
+.panel-toggle:hover{border-color:rgba(255,255,255,0.3);background:rgba(26,31,40,0.95)}
+
+.info-panel{
+  position:fixed;right:0;top:0;bottom:0;width:380px;
+  background:rgba(18,21,26,0.97);backdrop-filter:blur(20px);
+  border-left:1px solid var(--border);
+  transform:translateX(0);transition:transform 0.3s ease;
+  overflow-y:auto;z-index:200;padding:80px 0 24px;
+}
+.info-panel.collapsed{transform:translateX(100%)}
+.panel-header{padding:16px 20px 0}
+.panel-header h2{font-size:18px;font-weight:700;color:#fff;margin:0 0 4px}
+.panel-header .subtitle{font-size:13px;color:var(--text-muted);margin:0}
+
+.panel-tabs{display:flex;border-bottom:1px solid var(--border);padding:12px 20px 0}
+.tab{
+  padding:10px 14px;background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--text-muted);cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;
+  font-weight:500;transition:all 0.2s;
+}
+.tab.active{color:#fff;border-bottom-color:var(--accent-blue)}
+.tab:hover{color:var(--text)}
+
+.tab-content{padding:20px}
+.tab-content.hidden{display:none}
+
+.section-title{font-size:13px;font-weight:600;color:var(--text-muted);letter-spacing:0.06em;text-transform:uppercase;margin:20px 0 12px}
+.section-title:first-child{margin-top:0}
+
+.action-card{
+  background:rgba(255,255,255,0.04);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;margin-bottom:10px;
+}
+.action-card h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#fff}
+.action-card p{margin:0;font-size:13px;color:var(--text-muted);line-height:1.5}
+
+.checklist-item{
+  display:flex;align-items:flex-start;gap:12px;padding:10px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+}
+.checklist-item:last-child{border-bottom:none}
+.check-icon{font-size:16px;margin-top:1px;flex-shrink:0}
+.check-text{font-size:13px;color:#c8cad4;line-height:1.5}
+.check-text strong{color:var(--text)}
+
+.child-tip{
+  background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);
+  border-left:3px solid var(--accent-blue);border-radius:0 8px 8px 0;
+  padding:12px 14px;margin-bottom:10px;
+}
+.child-tip .tip-label{font-size:11px;font-weight:600;color:var(--accent-blue);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px}
+.child-tip p{margin:0;font-size:13px;color:#c8cad4;line-height:1.5}
+.child-tip .say-this{font-style:italic;color:var(--text)}
+
+.avoid-list{list-style:none;padding:0}
+.avoid-list li{font-size:13px;color:#c8cad4;line-height:1.6;padding:4px 0;padding-left:20px;position:relative}
+.avoid-list li::before{content:"✕";position:absolute;left:0;color:var(--accent-red);font-weight:700;font-size:11px}
+
+.contacts-list{list-style:none;padding:0}
+.contacts-list li{font-size:13px;color:#c8cad4;line-height:1.8}
+.contacts-list li strong{color:var(--text)}
+.contacts-link{color:var(--accent-blue);text-decoration:none}
+.contacts-link:hover{text-decoration:underline}
+
+.intro-text{font-size:13px;color:#c8cad4;line-height:1.6;margin-bottom:16px}
+.intro-text strong{color:var(--text)}
+
+.status-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;
+  letter-spacing:0.04em;text-transform:uppercase;
+}
+.badge-struck{background:rgba(255,59,59,0.15);color:#ff6b6b;border:1px solid rgba(255,59,59,0.3)}
+.badge-targeted{background:rgba(255,140,0,0.15);color:#ffa040;border:1px solid rgba(255,140,0,0.3)}
+.badge-damaged{background:rgba(255,215,0,0.15);color:#ffd700;border:1px solid rgba(255,215,0,0.3)}
+
+.maplibregl-popup-content{
+  background:rgba(18,21,26,0.97)!important;
+  border:1px solid rgba(255,255,255,0.12)!important;
+  border-radius:10px!important;color:var(--text)!important;
+  padding:14px 16px!important;min-width:220px;max-width:300px;
+  font-family:'Inter',sans-serif!important;backdrop-filter:blur(12px);
+}
+.maplibregl-popup-tip{border-top-color:rgba(18,21,26,0.97)!important}
+.maplibregl-popup-close-button{color:#fff!important;font-size:18px;padding:4px 8px}
+.popup-title{font-size:14px;font-weight:600;margin-bottom:6px;color:#fff}
+.popup-type{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
+.popup-desc{font-size:12px;color:var(--text-muted);line-height:1.5;margin:8px 0}
+.popup-coords{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent-blue)}
+
+.footer-bar{
+  position:fixed;bottom:0;left:0;right:0;z-index:90;
+  background:rgba(10,12,15,0.8);padding:6px 16px;
+  font-size:10px;color:var(--text-muted);text-align:center;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+
+@media(max-width:768px){
+  .info-panel{
+    width:100%;height:60vh;top:auto;bottom:0;right:0;
+    border-left:none;border-top:1px solid var(--border);
+    border-radius:16px 16px 0 0;transform:translateY(0);padding:20px 0 0;
+  }
+  .info-panel.collapsed{transform:translateY(100%)}
+  .panel-toggle{bottom:24px;right:16px;top:auto}
+  .legend{max-width:160px;bottom:48px}
+  .layer-controls{top:60px}
+  .header-bar .subtitle-text{display:none}
+  .header-bar{padding:10px 16px}
+  .footer-bar{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Header Bar -->
+<div class="header-bar">
+  <div class="logo-text">GULF<span class="logo-tag">WATCH</span></div>
+  <span class="subtitle-text">UAE Situational Awareness Platform</span>
+  <div class="header-right">
+    <div class="live-indicator">
+      <span class="live-dot"></span>
+      <span class="live-text">LIVE</span>
+    </div>
+    <span class="updated-text">Updated Mar 13, 2026</span>
+  </div>
+</div>
+
+<!-- Layer Controls -->
+<div class="layer-controls">
+  <button class="layer-btn active" data-layer="targets" onclick="toggleLayer('targets')">
+    <span class="layer-dot" style="background:#ff3b3b"></span>🎯 Targets
+  </button>
+  <button class="layer-btn active" data-layer="trajectories" onclick="toggleLayer('trajectories')">
+    <span class="layer-dot" style="background:#ff8c00"></span>🚀 Trajectories
+  </button>
+  <button class="layer-btn active" data-layer="riskZones" onclick="toggleLayer('riskZones')">
+    <span class="layer-dot" style="background:#ffd700"></span>⚠️ Risk Zones
+  </button>
+  <button class="layer-btn" data-layer="corridors" onclick="toggleLayer('corridors')">
+    <span class="layer-dot" style="background:#8892a4"></span>🛤️ Corridors
+  </button>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-title">Legend</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ff3b3b"></span>Confirmed strike site</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ff8c00"></span>Targeted / active threat</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ff7800;border:2px solid #ff9500"></span>Launch facility</div>
+  <div class="legend-item"><span class="legend-line" style="background:#ff3b3b"></span>Ballistic trajectory</div>
+  <div class="legend-item"><span class="legend-line" style="background:#ff8c00"></span>Drone trajectory</div>
+  <div class="legend-item"><span class="legend-line" style="background:#b91c1c"></span>Cruise missile trajectory</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,59,59,0.4);border:1px solid #ff3b3b"></span>High shrapnel risk</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,140,0,0.35);border:1px solid #ff8c00"></span>Medium shrapnel risk</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,215,0,0.3);border:1px solid #ffd700"></span>Lower risk / debris</div>
+</div>
+
+<!-- Panel Toggle -->
+<button class="panel-toggle" id="panelToggle" onclick="togglePanel()">☰ Family Guide</button>
+
+<!-- Info Panel -->
+<div class="info-panel" id="infoPanel">
+  <div class="panel-header">
+    <h2>Family Safety Guide</h2>
+    <p class="subtitle">What families in the UAE need to know right now.</p>
+  </div>
+  <div class="panel-tabs">
+    <button class="tab active" data-tab="safety" onclick="switchTab('safety')">🛡️ Safety</button>
+    <button class="tab" data-tab="supplies" onclick="switchTab('supplies')">🎒 Supplies</button>
+    <button class="tab" data-tab="children" onclick="switchTab('children')">💛 Children</button>
+  </div>
+
+  <!-- Safety Tab -->
+  <div class="tab-content" id="tab-safety">
+    <div class="section-title">What to do during an alert</div>
+    <p class="intro-text">During a siren or explosion — go inside immediately. The instinct to step outside and look at the sky is natural — and it's dangerous. Interceptions happen overhead, and debris falls in unpredictable patterns.</p>
+    <div class="action-card">
+      <h4>Go inside now</h4>
+      <p>Move to an interior room on a lower floor. Stay away from windows. Flying glass is one of the main causes of shrapnel injuries.</p>
+    </div>
+    <div class="action-card">
+      <h4>Interior room, lower floor</h4>
+      <p>Bathrooms and hallways are good options — no exterior walls, no windows. Lie flat or crouch under a sturdy table if you can.</p>
+    </div>
+    <div class="action-card">
+      <h4>Windows are the danger</h4>
+      <p>Even intercepted missiles cause pressure waves and fragments. Shattered glass can travel 15–20 metres. Keep curtains closed as a basic precaution.</p>
+    </div>
+    <div class="action-card">
+      <h4>Don't go outside to look</h4>
+      <p>Interception debris falls silently. There's no warning when a fragment begins to fall. Looking at the light show from outside puts you directly in the risk zone.</p>
+    </div>
+
+    <div class="section-title">If you're outside when it happens</div>
+    <div class="action-card">
+      <h4>Find solid cover fast</h4>
+      <p>Move to a building entrance, underpass, or concrete structure. Avoid open ground, glass facades, and parked vehicles near buildings.</p>
+    </div>
+    <div class="action-card">
+      <h4>If no cover is available</h4>
+      <p>Lie flat on the ground, face down. Cover your head and neck with your arms. Debris and shrapnel travel horizontally as well as downward.</p>
+    </div>
+
+    <div class="section-title">After the alert</div>
+    <div class="action-card">
+      <h4>Leave all debris alone</h4>
+      <p>Objects on the ground may include unexploded ordnance, fuel residue, or hazardous materials. Report locations to authorities via 999 (UAE Emergency).</p>
+    </div>
+    <div class="action-card">
+      <h4>Notify your family</h4>
+      <p>After the all-clear, contact family members to confirm everyone is safe. Keep communication brief — phone networks can be congested after incidents.</p>
+    </div>
+
+    <div class="section-title">Emergency Contacts</div>
+    <ul class="contacts-list">
+      <li><strong>UAE Emergency (police, ambulance, fire):</strong> 999</li>
+      <li><strong>Abu Dhabi Police:</strong> 02 414 7000</li>
+      <li><strong>Dubai Police:</strong> 04 609 6666</li>
+      <li><strong>UAE Crisis Hotline:</strong> 800 HOPE (4673)</li>
+      <li><strong>Civil Defence (Abu Dhabi):</strong> 02 410 7777</li>
+      <li><strong>Civil Defence (Dubai):</strong> 04 222 2222</li>
+    </ul>
+  </div>
+
+  <!-- Supplies Tab -->
+  <div class="tab-content hidden" id="tab-supplies">
+    <p class="intro-text"><strong>A 72-hour kit matters.</strong> It doesn't need to be military-grade. It needs to be ready. Keep it in one bag, in one place. Every adult in the household should know where it is.</p>
+
+    <div class="section-title">Water &amp; Food</div>
+    <div class="checklist-item"><span class="check-icon">💧</span><div class="check-text"><strong>Water</strong> — 3 litres per person per day. Keep a minimum 72-hour supply — that's 9 litres per person. Don't rely on tap water in an emergency.</div></div>
+    <div class="checklist-item"><span class="check-icon">🥫</span><div class="check-text"><strong>Food</strong> — Non-perishable food for 3 days. Canned goods, nuts, dried fruit, crackers, protein bars. Think calorie-dense items that need no cooking.</div></div>
+    <div class="checklist-item"><span class="check-icon">🍼</span><div class="check-text"><strong>Baby/child supplies</strong> — If you have young children: formula, pureed food, snacks they'll actually eat. Children often refuse unfamiliar food when stressed.</div></div>
+
+    <div class="section-title">Documents &amp; Money</div>
+    <div class="checklist-item"><span class="check-icon">📄</span><div class="check-text"><strong>Passports and IDs</strong> — Store originals in a waterproof zip-lock bag inside your kit. Include insurance cards, residence permits, medical cards.</div></div>
+    <div class="checklist-item"><span class="check-icon">💵</span><div class="check-text"><strong>Cash</strong> — AED 500–2000 in small notes. ATMs go offline in emergencies. Cards sometimes don't work. Cash is always liquid.</div></div>
+    <div class="checklist-item"><span class="check-icon">💊</span><div class="check-text"><strong>Medication</strong> — A full 7-day supply of any regular medications, including children's medicines. Keep prescriptions with them.</div></div>
+
+    <div class="section-title">Communication &amp; Power</div>
+    <div class="checklist-item"><span class="check-icon">🔋</span><div class="check-text"><strong>Power bank</strong> — At least 20,000mAh. Keep it charged. Phone battery is your lifeline.</div></div>
+    <div class="checklist-item"><span class="check-icon">📻</span><div class="check-text"><strong>Battery-powered radio</strong> — For UAE emergency broadcasts if internet goes down. Frequencies: Dubai 92.0 FM, Abu Dhabi 99.3 FM.</div></div>
+    <div class="checklist-item"><span class="check-icon">🔦</span><div class="check-text"><strong>Torch + batteries</strong> — A basic head torch is more useful than a handheld one if you're moving with children.</div></div>
+
+    <div class="section-title">Health &amp; Safety</div>
+    <div class="checklist-item"><span class="check-icon">🩹</span><div class="check-text"><strong>First aid kit</strong> — Bandages, antiseptic wipes, pain relief (adult + children's), plasters, a tourniquet. Replace anything you use.</div></div>
+    <div class="checklist-item"><span class="check-icon">😷</span><div class="check-text"><strong>N95 masks</strong> — Debris, dust, and smoke from structural fires. One per person. Keep sealed.</div></div>
+    <div class="checklist-item"><span class="check-icon">📢</span><div class="check-text"><strong>Whistle</strong> — To signal rescuers if you're trapped or separated in darkness. Attach one to children's bags or clothing.</div></div>
+    <div class="checklist-item"><span class="check-icon">🔌</span><div class="check-text"><strong>Spare chargers and cables</strong> — One cable per device type. USB-C, Lightning, whatever your family uses.</div></div>
+
+    <div class="section-title">For children specifically</div>
+    <div class="checklist-item"><span class="check-icon">🧸</span><div class="check-text"><strong>Familiar comfort item</strong> — A toy, stuffed animal, or blanket from home. Children regulate fear better when they have something familiar. Don't sacrifice this for space — it matters.</div></div>
+    <div class="checklist-item"><span class="check-icon">🎨</span><div class="check-text"><strong>Activity bag</strong> — Books, small toys, colouring materials. Waiting is hard for young children. Boredom during a shelter-in-place can become fear very quickly.</div></div>
+  </div>
+
+  <!-- Children Tab -->
+  <div class="tab-content hidden" id="tab-children">
+    <p class="intro-text"><strong>The way you respond is what they remember.</strong></p>
+    <p class="intro-text">Children take their emotional cues from the adults around them. Your voice, your posture, your words — they read all of it. The goal isn't to hide what's happening. It's to help them feel safe and capable inside it.</p>
+
+    <div class="section-title">Talking to young children (3–6 years)</div>
+    <div class="child-tip">
+      <div class="tip-label">What to say</div>
+      <p>Use straightforward language. You don't need to explain geopolitics. "Sometimes there are big bangs in the sky. When that happens, we go inside so we're safe." That's enough.</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">When they're scared</div>
+      <p>"It sounds scary. That makes sense. I feel worried sometimes too." Acknowledging fear is the first step to calming it. Dismissing it ("there's nothing to be scared of") doesn't work — they already feel it.</p>
+    </div>
+    <div class="child-tip">
+      <p class="say-this">"It's okay to feel scared. I'm here with you, and we're safe right now."</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">Make them feel capable</div>
+      <p>Children feel less helpless when they have a job. "Your job is to hold this torch." "Can you be the one to carry the bag?" Small responsibilities help.</p>
+    </div>
+    <div class="child-tip">
+      <p class="say-this">"Can you be my helper? I need you to carry this — it's important."</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">Normal is safe</div>
+      <p>Keep bedtime, meals, and stories the same. Disrupted routines signal danger to young children even more than words do. If you can keep the bedtime story, keep it.</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">What they overhear matters</div>
+      <p>Turn off news when children are present. Adult conversations about the situation should happen out of earshot. They don't need all the detail — they need to feel held.</p>
+    </div>
+
+    <div class="section-title">For children aged 7–12</div>
+    <div class="child-tip">
+      <div class="tip-label">They'll ask directly</div>
+      <p>Older children will ask "are we going to be okay?" Be honest without catastrophising. "I don't know exactly what's going to happen. What I know is we're doing everything we can to be safe."</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">Emphasise protection</div>
+      <p>The army, the police, the civil defence — people are working to keep us safe. Children feel better knowing there are competent adults in charge beyond their immediate family.</p>
+    </div>
+    <div class="child-tip">
+      <p class="say-this">"There are people whose whole job is to protect us. They're working right now."</p>
+    </div>
+    <div class="child-tip">
+      <div class="tip-label">Signs to look for</div>
+      <p>Sleep problems, clinginess, aggression, loss of appetite — these are normal stress responses in children, not permanent damage. If they persist for more than 2 weeks, speak to a professional.</p>
+    </div>
+
+    <div class="section-title">What not to say</div>
+    <ul class="avoid-list">
+      <li>"Don't worry, everything's fine." — They know something is wrong. It erodes trust.</li>
+      <li>"Stop being scared, you're a big kid." — Feelings aren't a weakness.</li>
+      <li>"I don't know" without following up. — Uncertainty is okay. Abandonment isn't.</li>
+      <li>Explaining the geopolitical context to a 5-year-old. — They can't process it. It just adds fear.</li>
+    </ul>
+
+    <div class="section-title">Resources</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;font-weight:600">UAE mental health support for families:</p>
+    <ul class="contacts-list">
+      <li><strong>Aman Dubai</strong> (24/7 mental health): 800 AMAN (2626)</li>
+      <li><strong>Maudsley Health Abu Dhabi:</strong> 02 635 8888</li>
+      <li><strong>Priory Wellbeing Centre Dubai:</strong> 04 247 2700</li>
+      <li><strong>Human Relations Institute (Dubai):</strong> 04 457 7818</li>
+    </ul>
+    <p style="font-size:12px;color:var(--text-muted);margin:12px 0 8px;font-weight:600">Online:</p>
+    <ul class="contacts-list">
+      <li><a class="contacts-link" href="https://unicef.org/parenting" target="_blank">UNICEF Parenting</a> — talking to children about conflict</li>
+      <li><a class="contacts-link" href="https://nctsn.org" target="_blank">NCTSN</a> — National Child Traumatic Stress Network</li>
+      <li><a class="contacts-link" href="https://savethechildren.org" target="_blank">Save the Children</a> — child counsellor guidance</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Footer -->
+<div class="footer-bar">Data reflects confirmed reports as of March 13, 2026. Trajectories are estimates based on known launch sites and confirmed impact locations. This platform is for situational awareness only and should not replace official emergency guidance.</div>
+
+<script>
+/* ===== GEO DATA ===== */
+const LAUNCH_SITES = [
+  { id:'bandar-abbas', coords:[56.28,26.56], name:'Bandar Abbas', type:'launch', description:'Primary IRGC Naval base. Source of most Shahed drone launches toward UAE.' },
+  { id:'bushehr', coords:[50.84,28.97], name:'Bushehr', type:'launch', description:'IRGC Air Force base. Long-range ballistic missile launches.' },
+  { id:'shiraz', coords:[52.53,29.61], name:'Shiraz', type:'launch', description:'IRGC missile base. Cruise missile and ballistic launches.' }
+];
+
+const TARGETS = [
+  { id:'al-dhafra', coords:[54.55,24.25], name:'Al Dhafra Air Base', status:'struck', type:'military', description:'USAF and French forces base (Abu Dhabi). Struck Feb 28. Debris caused civilian casualties near Zayed Airport — 1 killed, 7 injured.' },
+  { id:'al-minhad', coords:[55.37,25.03], name:'Al Minhad Air Base', status:'targeted', type:'military', description:'UAE Air Force, RAF, and Australian Defence Forces base (Dubai). Targeted Feb 28–Mar 1.' },
+  { id:'dxb', coords:[55.36,25.25], name:'Dubai International Airport', status:'struck', type:'infrastructure', description:'Terminal 3 struck at 12:30 AM. 4 staff injured. Airport evacuated. Minor damage — now operational.' },
+  { id:'palm-jumeirah', coords:[55.14,25.11], name:'Palm Jumeirah', status:'struck', type:'civilian', description:'Shahed drone struck near Fairmont The Palm Hotel. Large explosion and fire. 4 injured from blast and debris. Windows shattered in nearby buildings.' },
+  { id:'jebel-ali', coords:[55.03,24.97], name:'Jebel Ali Port', status:'struck', type:'infrastructure', description:'Fire broke out after aerial interception debris. Shipping lanes disrupted. Container ship attacked 35nm north.' },
+  { id:'burj-al-arab', coords:[55.185,25.141], name:'Burj Al Arab', status:'damaged', type:'civilian', description:'Damaged by fragments from nearby aerial interceptions. Windows and exterior fittings affected.' },
+  { id:'camp-de-la-paix', coords:[54.37,24.47], name:'Camp de la Paix', status:'struck', type:'military', description:'French naval air base near Zayed Port, Abu Dhabi. Struck by drones. Part of Coalition forces in UAE.' },
+  { id:'us-consulate', coords:[55.247,25.197], name:'US Consulate Dubai', status:'struck', type:'diplomatic', description:'Hit by suspected Iranian drone. Confirmed damage. Consulate closed temporarily.' }
+];
+
+const TRAJECTORIES = [
+  { id:'bb-dhafra-ballistic', type:'ballistic', label:'Ballistic: Bandar Abbas → Al Dhafra', color:[255,59,59], path:[[56.28,26.56],[55.90,26.10],[55.40,25.60],[55.00,25.00],[54.55,24.25]] },
+  { id:'bb-minhad-drone', type:'drone', label:'Drone: Bandar Abbas → Al Minhad', color:[255,140,0], path:[[56.28,26.56],[56.05,26.30],[55.80,26.00],[55.60,25.70],[55.50,25.40],[55.37,25.03]] },
+  { id:'bb-dxb-drone', type:'drone', label:'Drone: Bandar Abbas → Dubai Airport', color:[255,140,0], path:[[56.28,26.56],[56.10,26.30],[55.90,26.00],[55.70,25.70],[55.55,25.45],[55.36,25.25]] },
+  { id:'bb-palm-drone', type:'drone', label:'Drone: Bandar Abbas → Palm Jumeirah', color:[255,140,0], path:[[56.28,26.56],[56.00,26.20],[55.80,25.90],[55.60,25.60],[55.40,25.40],[55.20,25.20],[55.14,25.11]] },
+  { id:'bb-jebelali-drone', type:'drone', label:'Drone: Bandar Abbas → Jebel Ali', color:[255,165,0], path:[[56.28,26.56],[56.00,26.20],[55.70,25.80],[55.40,25.40],[55.20,25.15],[55.03,24.97]] },
+  { id:'bushehr-dhafra-ballistic', type:'ballistic', label:'Ballistic: Bushehr → Al Dhafra', color:[220,38,38], path:[[50.84,28.97],[51.80,28.00],[52.60,27.00],[53.40,26.00],[54.00,25.20],[54.55,24.25]] },
+  { id:'shiraz-dhafra-cruise', type:'cruise', label:'Cruise: Shiraz → Al Dhafra', color:[185,28,28], path:[[52.53,29.61],[52.80,28.50],[53.20,27.20],[53.80,26.00],[54.20,25.00],[54.55,24.25]] }
+];
+
+const RISK_ZONES = [
+  { id:'zone-dhafra', center:[54.55,24.25], radius:6, name:'Al Dhafra Debris Field', risk:'high', description:'Interception debris fell in residential areas near Zayed Airport. 1 civilian killed, 7 injured.' },
+  { id:'zone-palm', center:[55.14,25.11], radius:3, name:'Palm Jumeirah Shrapnel Zone', risk:'high', description:'Drone impact + nearby interception debris. Windows shattered within 500m radius.' },
+  { id:'zone-dxb', center:[55.36,25.25], radius:4, name:'DXB Corridor Risk Zone', risk:'medium', description:'Interception activity over airport approach. Debris risk for Deira and Festival City areas.' },
+  { id:'zone-jebelali', center:[55.03,24.97], radius:5, name:'Jebel Ali Risk Corridor', risk:'medium', description:'Multiple interceptions over this shipping corridor. Debris risk to coastal and industrial areas.' },
+  { id:'zone-abu-dhabi-corniche', center:[54.37,24.47], radius:4, name:'Abu Dhabi Corniche Zone', risk:'medium', description:'Explosions heard over Corniche district. Shrapnel risk from interceptions overhead.' },
+  { id:'zone-burj', center:[55.185,25.141], radius:2, name:'JBR/Marina Risk Zone', risk:'low', description:'Interception fragments caused damage to Burj Al Arab. Elevated risk for JBR and Marina areas.' }
+];
+
+/* ===== STATE ===== */
+const layerState = { targets: true, trajectories: true, riskZones: true, corridors: false };
+let panelOpen = true;
+let currentPopup = null;
+
+/* ===== MAP ===== */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources: {
+      'carto-dark': {
+        type: 'raster',
+        tiles: [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+        ],
+        tileSize: 256,
+        attribution: '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }
+    },
+    layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 20 }]
+  },
+  center: [53.5, 25.8],
+  zoom: 5.5,
+  minZoom: 4,
+  maxZoom: 14,
+  pitch: 45,
+  bearing: 0
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+/* ===== DECK.GL OVERLAY ===== */
+const deckOverlay = new deck.MapboxOverlay({ interleaved: false, layers: [] });
+map.addControl(deckOverlay);
+
+/* ===== HELPERS ===== */
+function getTargetColor(status, alpha) {
+  if (status === 'struck') return [255, 59, 59, alpha];
+  if (status === 'targeted') return [255, 140, 0, alpha];
+  return [255, 215, 0, alpha];
+}
+
+function getArcHeight(type) {
+  if (type === 'ballistic') return 1.2;
+  if (type === 'cruise') return 0.6;
+  return 0.4;
+}
+
+function showPopup(coords, name, status, type, description) {
+  if (currentPopup) currentPopup.remove();
+  const badgeClass = status ? 'badge-' + status : '';
+  const statusHtml = status ? `<span class="status-badge ${badgeClass}">${status.toUpperCase()}</span>` : '';
+  const typeLabel = type ? `<div class="popup-type">${type}</div>` : '';
+  currentPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '300px' })
+    .setLngLat(coords)
+    .setHTML(
+      `<div class="popup-title">${name}</div>` +
+      statusHtml + typeLabel +
+      `<div class="popup-desc">${description}</div>` +
+      `<div class="popup-coords">${coords[1].toFixed(4)}° N, ${coords[0].toFixed(4)}° E</div>`
+    )
+    .addTo(map);
+}
+
+/* ===== BUILD LAYERS ON MAP LOAD ===== */
+map.on('load', function () {
+
+  /* --- Risk Zones (Turf.js circles → MapLibre GeoJSON) --- */
+  const riskColors = { high: 'rgba(255,59,59,0.25)', medium: 'rgba(255,140,0,0.20)', low: 'rgba(255,215,0,0.15)' };
+  const riskBorders = { high: '#ff3b3b', medium: '#ff8c00', low: '#ffd700' };
+
+  RISK_ZONES.forEach(function (zone) {
+    const circle = turf.circle(zone.center, zone.radius, { steps: 64, units: 'kilometers' });
+    map.addSource('rz-' + zone.id, { type: 'geojson', data: circle });
+    map.addLayer({
+      id: 'rz-fill-' + zone.id, type: 'fill', source: 'rz-' + zone.id,
+      paint: { 'fill-color': riskColors[zone.risk], 'fill-opacity': 1 }
+    });
+    map.addLayer({
+      id: 'rz-line-' + zone.id, type: 'line', source: 'rz-' + zone.id,
+      paint: { 'line-color': riskBorders[zone.risk], 'line-width': 1.5, 'line-opacity': 0.7 }
+    });
+  });
+
+  /* --- Trajectory Corridors (Turf.js buffer → MapLibre GeoJSON) --- */
+  const corridorColors = { ballistic: 'rgba(255,59,59,0.05)', drone: 'rgba(255,140,0,0.05)', cruise: 'rgba(185,28,28,0.05)' };
+  const corridorBorders = { ballistic: 'rgba(255,59,59,0.15)', drone: 'rgba(255,140,0,0.15)', cruise: 'rgba(185,28,28,0.15)' };
+
+  TRAJECTORIES.forEach(function (t) {
+    const line = turf.lineString(t.path);
+    const buffered = turf.buffer(line, 30, { units: 'kilometers' });
+    map.addSource('corr-' + t.id, { type: 'geojson', data: buffered });
+    map.addLayer({
+      id: 'corr-fill-' + t.id, type: 'fill', source: 'corr-' + t.id,
+      paint: { 'fill-color': corridorColors[t.type], 'fill-opacity': 1 },
+      layout: { visibility: 'none' }
+    });
+    map.addLayer({
+      id: 'corr-line-' + t.id, type: 'line', source: 'corr-' + t.id,
+      paint: { 'line-color': corridorBorders[t.type], 'line-width': 1, 'line-opacity': 1 },
+      layout: { visibility: 'none' }
+    });
+  });
+
+  /* --- Labels (MapLibre symbol layer) --- */
+  const labelFeatures = TARGETS.map(function (t) {
+    return { type: 'Feature', geometry: { type: 'Point', coordinates: t.coords }, properties: { name: t.name } };
+  }).concat(LAUNCH_SITES.map(function (s) {
+    return { type: 'Feature', geometry: { type: 'Point', coordinates: s.coords }, properties: { name: s.name } };
+  }));
+
+  map.addSource('labels', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: labelFeatures }
+  });
+  map.addLayer({
+    id: 'labels-layer', type: 'symbol', source: 'labels',
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-font': ['Open Sans Regular'],
+      'text-size': 11,
+      'text-offset': [0, 1.8],
+      'text-anchor': 'top',
+      'text-max-width': 10
+    },
+    paint: {
+      'text-color': '#ffffff',
+      'text-halo-color': 'rgba(0,0,0,0.85)',
+      'text-halo-width': 1.5
+    }
+  });
+
+  /* --- Deck.gl Layers + Animation --- */
+  let pulsePhase = 0;
+
+  function buildDeckLayers() {
+    const layers = [];
+
+    if (layerState.trajectories) {
+      layers.push(new deck.ArcLayer({
+        id: 'trajectories-arc',
+        data: TRAJECTORIES,
+        getSourcePosition: function (d) { return d.path[0]; },
+        getTargetPosition: function (d) { return d.path[d.path.length - 1]; },
+        getSourceColor: [255, 160, 0, 200],
+        getTargetColor: function (d) { return [d.color[0], d.color[1], d.color[2], 220]; },
+        getHeight: function (d) { return getArcHeight(d.type); },
+        getWidth: 3,
+        widthMinPixels: 2,
+        pickable: false
+      }));
+    }
+
+    if (layerState.targets) {
+      /* Launch sites - solid */
+      layers.push(new deck.ScatterplotLayer({
+        id: 'launch-sites',
+        data: LAUNCH_SITES,
+        getPosition: function (d) { return d.coords; },
+        getFillColor: [255, 120, 0, 200],
+        getRadius: 12000,
+        radiusMinPixels: 8,
+        radiusMaxPixels: 40,
+        stroked: true,
+        getLineColor: [255, 160, 0, 255],
+        getLineWidth: 2,
+        lineWidthMinPixels: 1,
+        pickable: true,
+        onClick: function (info) {
+          if (info.object) showPopup(info.object.coords, info.object.name, null, 'launch site', info.object.description);
+        }
+      }));
+
+      /* Launch sites - pulse ring */
+      layers.push(new deck.ScatterplotLayer({
+        id: 'launch-sites-pulse',
+        data: LAUNCH_SITES,
+        getPosition: function (d) { return d.coords; },
+        getFillColor: [255, 120, 0, Math.floor((1 - pulsePhase) * 100)],
+        getRadius: 12000 + pulsePhase * 16000,
+        radiusMinPixels: 0,
+        radiusMaxPixels: 60,
+        stroked: false,
+        pickable: false
+      }));
+
+      /* Targets - solid inner */
+      layers.push(new deck.ScatterplotLayer({
+        id: 'targets-solid',
+        data: TARGETS,
+        getPosition: function (d) { return d.coords; },
+        getFillColor: function (d) { return getTargetColor(d.status, 200); },
+        getRadius: 8000,
+        radiusMinPixels: 6,
+        radiusMaxPixels: 30,
+        stroked: true,
+        getLineColor: function (d) { return getTargetColor(d.status, 255); },
+        getLineWidth: 2,
+        lineWidthMinPixels: 1,
+        pickable: true,
+        onClick: function (info) {
+          if (info.object) showPopup(info.object.coords, info.object.name, info.object.status, info.object.type, info.object.description);
+        }
+      }));
+
+      /* Targets - pulsing outer ring */
+      layers.push(new deck.ScatterplotLayer({
+        id: 'targets-pulse',
+        data: TARGETS,
+        getPosition: function (d) { return d.coords; },
+        getFillColor: function (d) { return getTargetColor(d.status, Math.floor((1 - pulsePhase) * 150)); },
+        getRadius: 8000 + pulsePhase * 12000,
+        radiusMinPixels: 0,
+        radiusMaxPixels: 60,
+        stroked: false,
+        pickable: false
+      }));
+    }
+
+    return layers;
+  }
+
+  function animate() {
+    pulsePhase = (pulsePhase + 0.005) % 1;
+    deckOverlay.setProps({ layers: buildDeckLayers() });
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+});
+
+/* ===== UI HANDLERS ===== */
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+  document.querySelector('.tab[data-tab="' + tabName + '"]').classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.add('hidden'); });
+  document.getElementById('tab-' + tabName).classList.remove('hidden');
+}
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('infoPanel').classList.toggle('collapsed', !panelOpen);
+  document.getElementById('panelToggle').textContent = panelOpen ? '✕ Close' : '☰ Family Guide';
+}
+
+function toggleLayer(layerName) {
+  layerState[layerName] = !layerState[layerName];
+  const btn = document.querySelector('.layer-btn[data-layer="' + layerName + '"]');
+  btn.classList.toggle('active', layerState[layerName]);
+
+  /* MapLibre layers */
+  if (layerName === 'riskZones') {
+    var vis = layerState.riskZones ? 'visible' : 'none';
+    RISK_ZONES.forEach(function (zone) {
+      if (map.getLayer('rz-fill-' + zone.id)) map.setLayoutProperty('rz-fill-' + zone.id, 'visibility', vis);
+      if (map.getLayer('rz-line-' + zone.id)) map.setLayoutProperty('rz-line-' + zone.id, 'visibility', vis);
+    });
+  }
+  if (layerName === 'corridors') {
+    var vis2 = layerState.corridors ? 'visible' : 'none';
+    TRAJECTORIES.forEach(function (t) {
+      if (map.getLayer('corr-fill-' + t.id)) map.setLayoutProperty('corr-fill-' + t.id, 'visibility', vis2);
+      if (map.getLayer('corr-line-' + t.id)) map.setLayoutProperty('corr-line-' + t.id, 'visibility', vis2);
+    });
+  }
+  if (layerName === 'targets') {
+    var vis3 = layerState.targets ? 'visible' : 'none';
+    if (map.getLayer('labels-layer')) map.setLayoutProperty('labels-layer', 'visibility', vis3);
+  }
+  /* Deck.gl layers are rebuilt dynamically in animate() via layerState checks */
+}
+</script>
+</body>
+</html>
