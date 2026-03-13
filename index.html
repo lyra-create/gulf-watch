@@ -439,7 +439,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margi
 
 <script>
 /* ===== API CONFIG ===== */
-const API_BASE = 'http://129.151.153.189:8087';
+const API_BASE = './api';
 
 /* ===== STATE ===== */
 const layerState = { targets: true, trajectories: true, riskZones: true, corridors: false };
@@ -574,18 +574,18 @@ map.on('load', async function () {
   let launchSites, targets, strikeEvents, stats;
   try {
     const [launchRes, targetRes, strikeRes, , statsRes] = await Promise.all([
-      fetch(`${API_BASE}/launch_sites_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(`${API_BASE}/targets_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(`${API_BASE}/strike_events_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(`${API_BASE}/daily_tallies`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch(`${API_BASE}/summary_stats`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      fetch(`${API_BASE}/launch_sites.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/targets.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/strike_events.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/daily_tallies.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/summary_stats.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     ]);
 
     // PostgREST wraps single-row views in a 1-element array; GeoJSON is nested under .geojson
-    launchSites  = launchRes[0].geojson;
-    targets      = targetRes[0].geojson;
-    strikeEvents = strikeRes[0].geojson;
-    stats        = statsRes[0];
+    launchSites  = (Array.isArray(launchRes) ? launchRes[0] : launchRes).geojson;
+    targets      = (Array.isArray(targetRes) ? targetRes[0] : targetRes).geojson;
+    strikeEvents = (Array.isArray(strikeRes) ? strikeRes[0] : strikeRes).geojson;
+    stats        = Array.isArray(statsRes) ? statsRes[0] : statsRes;
 
   } catch (err) {
     console.error('Gulf Watch: API fetch failed —', err);
