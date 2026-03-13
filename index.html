@@ -88,6 +88,25 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margi
 .panel-header h2{font-size:18px;font-weight:700;color:#fff;margin:0 0 4px}
 .panel-header .subtitle{font-size:13px;color:var(--text-muted);margin:0}
 
+/* Stats row */
+.stats-row{
+  display:flex;flex-wrap:wrap;gap:6px 14px;padding:12px 20px;
+  border-bottom:1px solid var(--border);border-top:1px solid var(--border);
+  margin-top:12px;background:rgba(255,255,255,0.02);
+}
+.stat-item{font-size:12px;color:var(--text-muted)}
+.stat-item strong{color:#fff;font-weight:600}
+.stat-item strong.stat-red{color:var(--accent-red)}
+.stat-item strong.stat-orange{color:var(--accent-orange)}
+
+/* Error banner */
+#error-banner{
+  position:fixed;top:56px;left:0;right:0;z-index:500;
+  background:rgba(140,20,20,0.95);color:#fff;text-align:center;
+  padding:8px 16px;font-size:13px;font-family:'Inter',sans-serif;
+  border-bottom:1px solid rgba(255,80,80,0.3);backdrop-filter:blur(8px);
+}
+
 .panel-tabs{display:flex;border-bottom:1px solid var(--border);padding:12px 20px 0}
 .tab{
   padding:10px 14px;background:none;border:none;border-bottom:2px solid transparent;
@@ -221,15 +240,17 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margi
 <!-- Legend -->
 <div class="legend">
   <div class="legend-title">Legend</div>
-  <div class="legend-item"><span class="legend-circle" style="background:#ff3b3b"></span>Confirmed strike site</div>
-  <div class="legend-item"><span class="legend-circle" style="background:#ff8c00"></span>Targeted / active threat</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ff3b3b"></span>Military target</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ff8c00"></span>Infrastructure target</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#3b82f6"></span>Diplomatic target</div>
+  <div class="legend-item"><span class="legend-circle" style="background:#ffd700"></span>Civilian / debris</div>
   <div class="legend-item"><span class="legend-circle" style="background:#ff7800;border:2px solid #ff9500"></span>Launch facility</div>
   <div class="legend-item"><span class="legend-line" style="background:#ff3b3b"></span>Ballistic trajectory</div>
-  <div class="legend-item"><span class="legend-line" style="background:#ff8c00"></span>Drone trajectory</div>
-  <div class="legend-item"><span class="legend-line" style="background:#b91c1c"></span>Cruise missile trajectory</div>
-  <div class="legend-item"><span class="legend-area" style="background:rgba(255,59,59,0.4);border:1px solid #ff3b3b"></span>High shrapnel risk</div>
-  <div class="legend-item"><span class="legend-area" style="background:rgba(255,140,0,0.35);border:1px solid #ff8c00"></span>Medium shrapnel risk</div>
-  <div class="legend-item"><span class="legend-area" style="background:rgba(255,215,0,0.3);border:1px solid #ffd700"></span>Lower risk / debris</div>
+  <div class="legend-item"><span class="legend-line" style="background:#06b6d4"></span>Drone trajectory</div>
+  <div class="legend-item"><span class="legend-line" style="background:#ffd700"></span>Cruise missile trajectory</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,59,59,0.4);border:1px solid #ff3b3b"></span>High risk zone (15km)</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,140,0,0.35);border:1px solid #ff8c00"></span>Medium risk zone (10km)</div>
+  <div class="legend-item"><span class="legend-area" style="background:rgba(255,215,0,0.3);border:1px solid #ffd700"></span>Lower risk / debris (5km)</div>
 </div>
 
 <!-- Panel Toggle -->
@@ -241,6 +262,12 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margi
     <h2>Family Safety Guide</h2>
     <p class="subtitle">What families in the UAE need to know right now.</p>
   </div>
+
+  <!-- Live Stats Row -->
+  <div class="stats-row" id="stats-bar">
+    <span class="stat-item" style="color:var(--text-muted);font-size:12px">Loading live data…</span>
+  </div>
+
   <div class="panel-tabs">
     <button class="tab active" data-tab="safety" onclick="switchTab('safety')">🛡️ Safety</button>
     <button class="tab" data-tab="supplies" onclick="switchTab('supplies')">🎒 Supplies</button>
@@ -408,50 +435,20 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;margi
 <div id="map"></div>
 
 <!-- Footer -->
-<div class="footer-bar">Data reflects confirmed reports as of March 13, 2026. Trajectories are estimates based on known launch sites and confirmed impact locations. This platform is for situational awareness only and should not replace official emergency guidance.</div>
+<div class="footer-bar">Data sourced live from Gulf Watch API. Trajectories are generated from confirmed launch sites and strike event locations. This platform is for situational awareness only and should not replace official emergency guidance.</div>
 
 <script>
-/* ===== GEO DATA ===== */
-const LAUNCH_SITES = [
-  { id:'bandar-abbas', coords:[56.28,26.56], name:'Bandar Abbas', type:'launch', description:'Primary IRGC Naval base. Source of most Shahed drone launches toward UAE.' },
-  { id:'bushehr', coords:[50.84,28.97], name:'Bushehr', type:'launch', description:'IRGC Air Force base. Long-range ballistic missile launches.' },
-  { id:'shiraz', coords:[52.53,29.61], name:'Shiraz', type:'launch', description:'IRGC missile base. Cruise missile and ballistic launches.' }
-];
-
-const TARGETS = [
-  { id:'al-dhafra', coords:[54.55,24.25], name:'Al Dhafra Air Base', status:'struck', type:'military', description:'USAF and French forces base (Abu Dhabi). Struck Feb 28. Debris caused civilian casualties near Zayed Airport — 1 killed, 7 injured.' },
-  { id:'al-minhad', coords:[55.37,25.03], name:'Al Minhad Air Base', status:'targeted', type:'military', description:'UAE Air Force, RAF, and Australian Defence Forces base (Dubai). Targeted Feb 28–Mar 1.' },
-  { id:'dxb', coords:[55.36,25.25], name:'Dubai International Airport', status:'struck', type:'infrastructure', description:'Terminal 3 struck at 12:30 AM. 4 staff injured. Airport evacuated. Minor damage — now operational.' },
-  { id:'palm-jumeirah', coords:[55.14,25.11], name:'Palm Jumeirah', status:'struck', type:'civilian', description:'Shahed drone struck near Fairmont The Palm Hotel. Large explosion and fire. 4 injured from blast and debris. Windows shattered in nearby buildings.' },
-  { id:'jebel-ali', coords:[55.03,24.97], name:'Jebel Ali Port', status:'struck', type:'infrastructure', description:'Fire broke out after aerial interception debris. Shipping lanes disrupted. Container ship attacked 35nm north.' },
-  { id:'burj-al-arab', coords:[55.185,25.141], name:'Burj Al Arab', status:'damaged', type:'civilian', description:'Damaged by fragments from nearby aerial interceptions. Windows and exterior fittings affected.' },
-  { id:'camp-de-la-paix', coords:[54.37,24.47], name:'Camp de la Paix', status:'struck', type:'military', description:'French naval air base near Zayed Port, Abu Dhabi. Struck by drones. Part of Coalition forces in UAE.' },
-  { id:'us-consulate', coords:[55.247,25.197], name:'US Consulate Dubai', status:'struck', type:'diplomatic', description:'Hit by suspected Iranian drone. Confirmed damage. Consulate closed temporarily.' }
-];
-
-const TRAJECTORIES = [
-  { id:'bb-dhafra-ballistic', type:'ballistic', label:'Ballistic: Bandar Abbas → Al Dhafra', color:[255,59,59], path:[[56.28,26.56],[55.90,26.10],[55.40,25.60],[55.00,25.00],[54.55,24.25]] },
-  { id:'bb-minhad-drone', type:'drone', label:'Drone: Bandar Abbas → Al Minhad', color:[255,140,0], path:[[56.28,26.56],[56.05,26.30],[55.80,26.00],[55.60,25.70],[55.50,25.40],[55.37,25.03]] },
-  { id:'bb-dxb-drone', type:'drone', label:'Drone: Bandar Abbas → Dubai Airport', color:[255,140,0], path:[[56.28,26.56],[56.10,26.30],[55.90,26.00],[55.70,25.70],[55.55,25.45],[55.36,25.25]] },
-  { id:'bb-palm-drone', type:'drone', label:'Drone: Bandar Abbas → Palm Jumeirah', color:[255,140,0], path:[[56.28,26.56],[56.00,26.20],[55.80,25.90],[55.60,25.60],[55.40,25.40],[55.20,25.20],[55.14,25.11]] },
-  { id:'bb-jebelali-drone', type:'drone', label:'Drone: Bandar Abbas → Jebel Ali', color:[255,165,0], path:[[56.28,26.56],[56.00,26.20],[55.70,25.80],[55.40,25.40],[55.20,25.15],[55.03,24.97]] },
-  { id:'bushehr-dhafra-ballistic', type:'ballistic', label:'Ballistic: Bushehr → Al Dhafra', color:[220,38,38], path:[[50.84,28.97],[51.80,28.00],[52.60,27.00],[53.40,26.00],[54.00,25.20],[54.55,24.25]] },
-  { id:'shiraz-dhafra-cruise', type:'cruise', label:'Cruise: Shiraz → Al Dhafra', color:[185,28,28], path:[[52.53,29.61],[52.80,28.50],[53.20,27.20],[53.80,26.00],[54.20,25.00],[54.55,24.25]] }
-];
-
-const RISK_ZONES = [
-  { id:'zone-dhafra', center:[54.55,24.25], radius:6, name:'Al Dhafra Debris Field', risk:'high', description:'Interception debris fell in residential areas near Zayed Airport. 1 civilian killed, 7 injured.' },
-  { id:'zone-palm', center:[55.14,25.11], radius:3, name:'Palm Jumeirah Shrapnel Zone', risk:'high', description:'Drone impact + nearby interception debris. Windows shattered within 500m radius.' },
-  { id:'zone-dxb', center:[55.36,25.25], radius:4, name:'DXB Corridor Risk Zone', risk:'medium', description:'Interception activity over airport approach. Debris risk for Deira and Festival City areas.' },
-  { id:'zone-jebelali', center:[55.03,24.97], radius:5, name:'Jebel Ali Risk Corridor', risk:'medium', description:'Multiple interceptions over this shipping corridor. Debris risk to coastal and industrial areas.' },
-  { id:'zone-abu-dhabi-corniche', center:[54.37,24.47], radius:4, name:'Abu Dhabi Corniche Zone', risk:'medium', description:'Explosions heard over Corniche district. Shrapnel risk from interceptions overhead.' },
-  { id:'zone-burj', center:[55.185,25.141], radius:2, name:'JBR/Marina Risk Zone', risk:'low', description:'Interception fragments caused damage to Burj Al Arab. Elevated risk for JBR and Marina areas.' }
-];
+/* ===== API CONFIG ===== */
+const API_BASE = 'http://129.151.153.189:8087';
 
 /* ===== STATE ===== */
 const layerState = { targets: true, trajectories: true, riskZones: true, corridors: false };
 let panelOpen = true;
 let currentPopup = null;
+
+// Track dynamically created MapLibre layer IDs for toggling
+let riskZoneIds = [];
+let corridorIds = [];
 
 /* ===== MAP ===== */
 const map = new maplibregl.Map({
@@ -488,16 +485,46 @@ const deckOverlay = new deck.MapboxOverlay({ interleaved: false, layers: [] });
 map.addControl(deckOverlay);
 
 /* ===== HELPERS ===== */
-function getTargetColor(status, alpha) {
-  if (status === 'struck') return [255, 59, 59, alpha];
-  if (status === 'targeted') return [255, 140, 0, alpha];
-  return [255, 215, 0, alpha];
+function getTargetColorByType(targetType, alpha) {
+  switch ((targetType || '').toLowerCase()) {
+    case 'military':        return [255, 59, 59, alpha];
+    case 'infrastructure':  return [255, 140, 0, alpha];
+    case 'diplomatic':      return [59, 130, 246, alpha];
+    default:                return [255, 215, 0, alpha]; // civilian / debris
+  }
 }
 
-function getArcHeight(type) {
-  if (type === 'ballistic') return 1.2;
-  if (type === 'cruise') return 0.6;
-  return 0.4;
+function getTargetRadius(targetType) {
+  switch ((targetType || '').toLowerCase()) {
+    case 'military':       return 8000;
+    case 'infrastructure': return 8000;
+    case 'diplomatic':     return 7000;
+    default:               return 5000; // civilian — smaller
+  }
+}
+
+function getArcColor(weaponType) {
+  switch ((weaponType || '').toLowerCase()) {
+    case 'ballistic': return [255, 59, 59, 220];   // red/orange
+    case 'cruise':    return [255, 215, 0, 220];    // yellow
+    default:          return [6, 182, 212, 220];    // drone → cyan/blue
+  }
+}
+
+function getArcSourceColor(weaponType) {
+  switch ((weaponType || '').toLowerCase()) {
+    case 'ballistic': return [255, 160, 0, 200];
+    case 'cruise':    return [255, 200, 0, 200];
+    default:          return [0, 200, 220, 200];
+  }
+}
+
+function getArcHeight(weaponType) {
+  switch ((weaponType || '').toLowerCase()) {
+    case 'ballistic': return 1.2;
+    case 'cruise':    return 0.6;
+    default:          return 0.4;
+  }
 }
 
 function showPopup(coords, name, status, type, description) {
@@ -510,95 +537,221 @@ function showPopup(coords, name, status, type, description) {
     .setHTML(
       `<div class="popup-title">${name}</div>` +
       statusHtml + typeLabel +
-      `<div class="popup-desc">${description}</div>` +
+      `<div class="popup-desc">${description || ''}</div>` +
       `<div class="popup-coords">${coords[1].toFixed(4)}° N, ${coords[0].toFixed(4)}° E</div>`
     )
     .addTo(map);
 }
 
+function updateStats(stats) {
+  const el = document.getElementById('stats-bar');
+  if (!el) return;
+  if (!stats) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">Stats unavailable</span>';
+    return;
+  }
+  el.innerHTML =
+    `<span class="stat-item">Events <strong>${stats.total_events ?? 0}</strong></span>` +
+    `<span class="stat-item">Intercepted <strong>${stats.intercepted ?? 0}</strong></span>` +
+    `<span class="stat-item">Struck <strong>${stats.struck ?? 0}</strong></span>` +
+    `<span class="stat-item">Fatalities <strong class="stat-red">${stats.total_fatalities ?? 0}</strong></span>` +
+    `<span class="stat-item">Injuries <strong class="stat-orange">${stats.total_injuries ?? 0}</strong></span>`;
+}
+
 /* ===== BUILD LAYERS ON MAP LOAD ===== */
-map.on('load', function () {
+map.on('load', async function () {
 
-  /* --- Risk Zones (Turf.js circles → MapLibre GeoJSON) --- */
-  const riskColors = { high: 'rgba(255,59,59,0.25)', medium: 'rgba(255,140,0,0.20)', low: 'rgba(255,215,0,0.15)' };
-  const riskBorders = { high: '#ff3b3b', medium: '#ff8c00', low: '#ffd700' };
+  /* --- Error banner helper --- */
+  function showErrorBanner() {
+    if (document.getElementById('error-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'error-banner';
+    banner.textContent = '⚠️ Data unavailable — showing cached data';
+    document.body.appendChild(banner);
+  }
 
-  RISK_ZONES.forEach(function (zone) {
-    const circle = turf.circle(zone.center, zone.radius, { steps: 64, units: 'kilometers' });
-    map.addSource('rz-' + zone.id, { type: 'geojson', data: circle });
-    map.addLayer({
-      id: 'rz-fill-' + zone.id, type: 'fill', source: 'rz-' + zone.id,
-      paint: { 'fill-color': riskColors[zone.risk], 'fill-opacity': 1 }
-    });
-    map.addLayer({
-      id: 'rz-line-' + zone.id, type: 'line', source: 'rz-' + zone.id,
-      paint: { 'line-color': riskBorders[zone.risk], 'line-width': 1.5, 'line-opacity': 0.7 }
-    });
-  });
+  /* --- Fetch all endpoints in parallel --- */
+  let launchSites, targets, strikeEvents, stats;
+  try {
+    const [launchRes, targetRes, strikeRes, , statsRes] = await Promise.all([
+      fetch(`${API_BASE}/launch_sites_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/targets_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/strike_events_geojson`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/daily_tallies`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(`${API_BASE}/summary_stats`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    ]);
 
-  /* --- Trajectory Corridors (Turf.js buffer → MapLibre GeoJSON) --- */
-  const corridorColors = { ballistic: 'rgba(255,59,59,0.05)', drone: 'rgba(255,140,0,0.05)', cruise: 'rgba(185,28,28,0.05)' };
-  const corridorBorders = { ballistic: 'rgba(255,59,59,0.15)', drone: 'rgba(255,140,0,0.15)', cruise: 'rgba(185,28,28,0.15)' };
+    // PostgREST wraps single-row views in a 1-element array; GeoJSON is nested under .geojson
+    launchSites  = launchRes[0].geojson;
+    targets      = targetRes[0].geojson;
+    strikeEvents = strikeRes[0].geojson;
+    stats        = statsRes[0];
 
-  TRAJECTORIES.forEach(function (t) {
-    const line = turf.lineString(t.path);
-    const buffered = turf.buffer(line, 30, { units: 'kilometers' });
-    map.addSource('corr-' + t.id, { type: 'geojson', data: buffered });
-    map.addLayer({
-      id: 'corr-fill-' + t.id, type: 'fill', source: 'corr-' + t.id,
-      paint: { 'fill-color': corridorColors[t.type], 'fill-opacity': 1 },
-      layout: { visibility: 'none' }
-    });
-    map.addLayer({
-      id: 'corr-line-' + t.id, type: 'line', source: 'corr-' + t.id,
-      paint: { 'line-color': corridorBorders[t.type], 'line-width': 1, 'line-opacity': 1 },
-      layout: { visibility: 'none' }
-    });
-  });
+  } catch (err) {
+    console.error('Gulf Watch: API fetch failed —', err);
+    showErrorBanner();
+    launchSites  = { type: 'FeatureCollection', features: [] };
+    targets      = { type: 'FeatureCollection', features: [] };
+    strikeEvents = { type: 'FeatureCollection', features: [] };
+    stats        = null;
+  }
 
-  /* --- Labels (MapLibre symbol layer) --- */
-  const labelFeatures = TARGETS.map(function (t) {
-    return { type: 'Feature', geometry: { type: 'Point', coordinates: t.coords }, properties: { name: t.name } };
-  }).concat(LAUNCH_SITES.map(function (s) {
-    return { type: 'Feature', geometry: { type: 'Point', coordinates: s.coords }, properties: { name: s.name } };
-  }));
+  /* --- Update live stats panel --- */
+  updateStats(stats);
 
-  map.addSource('labels', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: labelFeatures }
-  });
-  map.addLayer({
-    id: 'labels-layer', type: 'symbol', source: 'labels',
-    layout: {
-      'text-field': ['get', 'name'],
-      'text-font': ['Open Sans Regular'],
-      'text-size': 11,
-      'text-offset': [0, 1.8],
-      'text-anchor': 'top',
-      'text-max-width': 10
-    },
-    paint: {
-      'text-color': '#ffffff',
-      'text-halo-color': 'rgba(0,0,0,0.85)',
-      'text-halo-width': 1.5
+  /* -------------------------------------------------------------------
+     RISK ZONES — generated client-side from targets using Turf.js
+     military    → 15 km, high risk   (red)
+     infrastructure → 10 km, medium   (orange)
+     civilian/debris → 5 km, low      (yellow)
+  ------------------------------------------------------------------- */
+  const riskFillColors   = { high: 'rgba(255,59,59,0.25)',  medium: 'rgba(255,140,0,0.20)', low: 'rgba(255,215,0,0.15)' };
+  const riskBorderColors = { high: '#ff3b3b', medium: '#ff8c00', low: '#ffd700' };
+
+  function getRiskLevel(targetType) {
+    const t = (targetType || '').toLowerCase();
+    if (t === 'military') return 'high';
+    if (t === 'infrastructure') return 'medium';
+    return 'low';
+  }
+
+  function getRiskRadius(targetType) {
+    const t = (targetType || '').toLowerCase();
+    if (t === 'military') return 15;
+    if (t === 'infrastructure') return 10;
+    return 5;
+  }
+
+  targets.features.forEach(function (feature, i) {
+    const coords = feature.geometry.coordinates;
+    const props  = feature.properties;
+    const tt     = (props.target_type || '').toLowerCase();
+    const level  = getRiskLevel(tt);
+    const radius = getRiskRadius(tt);
+    const sid    = 'rz-' + (props.id || i);
+
+    try {
+      const circle = turf.circle(coords, radius, { steps: 64, units: 'kilometers' });
+      map.addSource(sid, { type: 'geojson', data: circle });
+      map.addLayer({
+        id: 'rz-fill-' + sid, type: 'fill', source: sid,
+        paint: { 'fill-color': riskFillColors[level], 'fill-opacity': 1 }
+      });
+      map.addLayer({
+        id: 'rz-line-' + sid, type: 'line', source: sid,
+        paint: { 'line-color': riskBorderColors[level], 'line-width': 1.5, 'line-opacity': 0.7 }
+      });
+      riskZoneIds.push(sid);
+    } catch (e) {
+      console.warn('Gulf Watch: risk zone error for', sid, e);
     }
   });
 
-  /* --- Deck.gl Layers + Animation --- */
+  /* -------------------------------------------------------------------
+     ARC DATA — derived from strike events joined to launch sites
+     Each strike event that has a launch_site_id becomes one arc
+  ------------------------------------------------------------------- */
+  const launchCoordMap = {};
+  launchSites.features.forEach(function (f) {
+    if (f.properties && f.properties.id) {
+      launchCoordMap[f.properties.id] = f.geometry.coordinates;
+    }
+  });
+
+  const arcData = [];
+  strikeEvents.features.forEach(function (f) {
+    const props = f.properties;
+    if (!props.launch_site_id) return;
+    const src = launchCoordMap[props.launch_site_id];
+    if (!src) return;
+    arcData.push({
+      id:             props.id,
+      sourcePosition: src,
+      targetPosition: f.geometry.coordinates,
+      weapon_type:    (props.weapon_type || 'drone').toLowerCase(),
+      fatalities:     props.fatalities || 0,
+      injuries:       props.injuries   || 0,
+      description:    props.description || ''
+    });
+  });
+
+  /* -------------------------------------------------------------------
+     TRAJECTORY CORRIDORS — buffered lines shown when "Corridors" active
+  ------------------------------------------------------------------- */
+  const corrFillColors   = { ballistic: 'rgba(255,59,59,0.05)',  cruise: 'rgba(255,215,0,0.05)', drone: 'rgba(6,182,212,0.05)' };
+  const corrBorderColors = { ballistic: 'rgba(255,59,59,0.15)', cruise: 'rgba(255,215,0,0.15)', drone: 'rgba(6,182,212,0.15)' };
+
+  arcData.forEach(function (arc, i) {
+    const wt    = arc.weapon_type in corrFillColors ? arc.weapon_type : 'drone';
+    const corrId = 'corr-' + (arc.id || i);
+    try {
+      const line     = turf.lineString([arc.sourcePosition, arc.targetPosition]);
+      const buffered = turf.buffer(line, 30, { units: 'kilometers' });
+      map.addSource(corrId, { type: 'geojson', data: buffered });
+      map.addLayer({
+        id: 'corr-fill-' + corrId, type: 'fill', source: corrId,
+        paint: { 'fill-color': corrFillColors[wt], 'fill-opacity': 1 },
+        layout: { visibility: 'none' }
+      });
+      map.addLayer({
+        id: 'corr-line-' + corrId, type: 'line', source: corrId,
+        paint: { 'line-color': corrBorderColors[wt], 'line-width': 1, 'line-opacity': 1 },
+        layout: { visibility: 'none' }
+      });
+      corridorIds.push(corrId);
+    } catch (e) {
+      console.warn('Gulf Watch: corridor error for', corrId, e);
+    }
+  });
+
+  /* -------------------------------------------------------------------
+     LABELS — symbol layer for target and launch site names
+  ------------------------------------------------------------------- */
+  const labelFeatures = [].concat(
+    targets.features.map(function (f) {
+      return { type: 'Feature', geometry: f.geometry, properties: { name: f.properties.name } };
+    }),
+    launchSites.features.map(function (f) {
+      return { type: 'Feature', geometry: f.geometry, properties: { name: f.properties.name } };
+    })
+  );
+
+  map.addSource('labels', { type: 'geojson', data: { type: 'FeatureCollection', features: labelFeatures } });
+  map.addLayer({
+    id: 'labels-layer', type: 'symbol', source: 'labels',
+    layout: {
+      'text-field':      ['get', 'name'],
+      'text-font':       ['Open Sans Regular'],
+      'text-size':       11,
+      'text-offset':     [0, 1.8],
+      'text-anchor':     'top',
+      'text-max-width':  10
+    },
+    paint: {
+      'text-color':       '#ffffff',
+      'text-halo-color':  'rgba(0,0,0,0.85)',
+      'text-halo-width':  1.5
+    }
+  });
+
+  /* -------------------------------------------------------------------
+     DECK.GL ANIMATED LAYERS
+  ------------------------------------------------------------------- */
   let pulsePhase = 0;
 
   function buildDeckLayers() {
     const layers = [];
 
-    if (layerState.trajectories) {
+    /* --- Arc / trajectory layer --- */
+    if (layerState.trajectories && arcData.length > 0) {
       layers.push(new deck.ArcLayer({
         id: 'trajectories-arc',
-        data: TRAJECTORIES,
-        getSourcePosition: function (d) { return d.path[0]; },
-        getTargetPosition: function (d) { return d.path[d.path.length - 1]; },
-        getSourceColor: [255, 160, 0, 200],
-        getTargetColor: function (d) { return [d.color[0], d.color[1], d.color[2], 220]; },
-        getHeight: function (d) { return getArcHeight(d.type); },
+        data: arcData,
+        getSourcePosition: d => d.sourcePosition,
+        getTargetPosition: d => d.targetPosition,
+        getSourceColor:    d => getArcSourceColor(d.weapon_type),
+        getTargetColor:    d => getArcColor(d.weapon_type),
+        getHeight:         d => getArcHeight(d.weapon_type),
         getWidth: 3,
         widthMinPixels: 2,
         pickable: false
@@ -606,64 +759,73 @@ map.on('load', function () {
     }
 
     if (layerState.targets) {
-      /* Launch sites - solid */
+      /* Launch sites — solid dot */
       layers.push(new deck.ScatterplotLayer({
         id: 'launch-sites',
-        data: LAUNCH_SITES,
-        getPosition: function (d) { return d.coords; },
-        getFillColor: [255, 120, 0, 200],
-        getRadius: 12000,
+        data: launchSites.features,
+        getPosition:    f => f.geometry.coordinates,
+        getFillColor:   [255, 120, 0, 200],
+        getRadius:      12000,
         radiusMinPixels: 8,
         radiusMaxPixels: 40,
         stroked: true,
-        getLineColor: [255, 160, 0, 255],
-        getLineWidth: 2,
+        getLineColor:   [255, 160, 0, 255],
+        getLineWidth:   2,
         lineWidthMinPixels: 1,
         pickable: true,
-        onClick: function (info) {
-          if (info.object) showPopup(info.object.coords, info.object.name, null, 'launch site', info.object.description);
+        onClick: info => {
+          if (info.object) {
+            const c = info.object.geometry.coordinates;
+            const p = info.object.properties;
+            showPopup(c, p.name, null, p.site_type || 'Launch facility',
+              p.capabilities || 'IRGC launch facility');
+          }
         }
       }));
 
-      /* Launch sites - pulse ring */
+      /* Launch sites — pulsing ring */
       layers.push(new deck.ScatterplotLayer({
         id: 'launch-sites-pulse',
-        data: LAUNCH_SITES,
-        getPosition: function (d) { return d.coords; },
-        getFillColor: [255, 120, 0, Math.floor((1 - pulsePhase) * 100)],
-        getRadius: 12000 + pulsePhase * 16000,
+        data: launchSites.features,
+        getPosition:    f => f.geometry.coordinates,
+        getFillColor:   [255, 120, 0, Math.floor((1 - pulsePhase) * 100)],
+        getRadius:      12000 + pulsePhase * 16000,
         radiusMinPixels: 0,
         radiusMaxPixels: 60,
         stroked: false,
         pickable: false
       }));
 
-      /* Targets - solid inner */
+      /* Targets — solid dot coloured by target_type */
       layers.push(new deck.ScatterplotLayer({
         id: 'targets-solid',
-        data: TARGETS,
-        getPosition: function (d) { return d.coords; },
-        getFillColor: function (d) { return getTargetColor(d.status, 200); },
-        getRadius: 8000,
+        data: targets.features,
+        getPosition:    f => f.geometry.coordinates,
+        getFillColor:   f => getTargetColorByType(f.properties.target_type, 200),
+        getRadius:      f => getTargetRadius(f.properties.target_type),
         radiusMinPixels: 6,
         radiusMaxPixels: 30,
         stroked: true,
-        getLineColor: function (d) { return getTargetColor(d.status, 255); },
-        getLineWidth: 2,
+        getLineColor:   f => getTargetColorByType(f.properties.target_type, 255),
+        getLineWidth:   2,
         lineWidthMinPixels: 1,
         pickable: true,
-        onClick: function (info) {
-          if (info.object) showPopup(info.object.coords, info.object.name, info.object.status, info.object.type, info.object.description);
+        onClick: info => {
+          if (info.object) {
+            const c = info.object.geometry.coordinates;
+            const p = info.object.properties;
+            showPopup(c, p.name, p.status, p.target_type, p.description || '');
+          }
         }
       }));
 
-      /* Targets - pulsing outer ring */
+      /* Targets — pulsing outer ring */
       layers.push(new deck.ScatterplotLayer({
         id: 'targets-pulse',
-        data: TARGETS,
-        getPosition: function (d) { return d.coords; },
-        getFillColor: function (d) { return getTargetColor(d.status, Math.floor((1 - pulsePhase) * 150)); },
-        getRadius: 8000 + pulsePhase * 12000,
+        data: targets.features,
+        getPosition:    f => f.geometry.coordinates,
+        getFillColor:   f => getTargetColorByType(f.properties.target_type, Math.floor((1 - pulsePhase) * 150)),
+        getRadius:      f => getTargetRadius(f.properties.target_type) + pulsePhase * 12000,
         radiusMinPixels: 0,
         radiusMaxPixels: 60,
         stroked: false,
@@ -685,9 +847,9 @@ map.on('load', function () {
 
 /* ===== UI HANDLERS ===== */
 function switchTab(tabName) {
-  document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelector('.tab[data-tab="' + tabName + '"]').classList.add('active');
-  document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.add('hidden'); });
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
   document.getElementById('tab-' + tabName).classList.remove('hidden');
 }
 
@@ -700,28 +862,33 @@ function togglePanel() {
 function toggleLayer(layerName) {
   layerState[layerName] = !layerState[layerName];
   const btn = document.querySelector('.layer-btn[data-layer="' + layerName + '"]');
-  btn.classList.toggle('active', layerState[layerName]);
+  if (btn) btn.classList.toggle('active', layerState[layerName]);
 
-  /* MapLibre layers */
+  /* Risk zones — MapLibre fill + line layers */
   if (layerName === 'riskZones') {
-    var vis = layerState.riskZones ? 'visible' : 'none';
-    RISK_ZONES.forEach(function (zone) {
-      if (map.getLayer('rz-fill-' + zone.id)) map.setLayoutProperty('rz-fill-' + zone.id, 'visibility', vis);
-      if (map.getLayer('rz-line-' + zone.id)) map.setLayoutProperty('rz-line-' + zone.id, 'visibility', vis);
+    const vis = layerState.riskZones ? 'visible' : 'none';
+    riskZoneIds.forEach(function (sid) {
+      if (map.getLayer('rz-fill-' + sid)) map.setLayoutProperty('rz-fill-' + sid, 'visibility', vis);
+      if (map.getLayer('rz-line-' + sid)) map.setLayoutProperty('rz-line-' + sid, 'visibility', vis);
     });
   }
+
+  /* Corridors — MapLibre fill + line layers */
   if (layerName === 'corridors') {
-    var vis2 = layerState.corridors ? 'visible' : 'none';
-    TRAJECTORIES.forEach(function (t) {
-      if (map.getLayer('corr-fill-' + t.id)) map.setLayoutProperty('corr-fill-' + t.id, 'visibility', vis2);
-      if (map.getLayer('corr-line-' + t.id)) map.setLayoutProperty('corr-line-' + t.id, 'visibility', vis2);
+    const vis = layerState.corridors ? 'visible' : 'none';
+    corridorIds.forEach(function (cid) {
+      if (map.getLayer('corr-fill-' + cid)) map.setLayoutProperty('corr-fill-' + cid, 'visibility', vis);
+      if (map.getLayer('corr-line-' + cid)) map.setLayoutProperty('corr-line-' + cid, 'visibility', vis);
     });
   }
+
+  /* Target labels */
   if (layerName === 'targets') {
-    var vis3 = layerState.targets ? 'visible' : 'none';
-    if (map.getLayer('labels-layer')) map.setLayoutProperty('labels-layer', 'visibility', vis3);
+    const vis = layerState.targets ? 'visible' : 'none';
+    if (map.getLayer('labels-layer')) map.setLayoutProperty('labels-layer', 'visibility', vis);
   }
-  /* Deck.gl layers are rebuilt dynamically in animate() via layerState checks */
+
+  /* Deck.gl arc/scatter layers are rebuilt each animation frame via layerState checks */
 }
 </script>
 </body>
